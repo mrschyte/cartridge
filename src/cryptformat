@@ -1,0 +1,73 @@
+#!/bin/bash
+
+set -euo pipefail
+
+while [[ $# -gt 0 ]]; do
+	opt="$1"
+	shift
+	case "${opt}" in
+		"--")
+			break
+			;;
+		"-h")
+			echo "Usage: cryptformat -k keyfile device"
+			exit 1
+			;;
+		"-k")
+			KEYFILE="$1"
+			shift
+			;;
+		*)
+			DEVICE="${opt}"
+			;;
+	esac
+done
+
+if [[ -z "${KEYFILE+x}" ]]; then
+	echo "Keyfile must be specified to continue."
+	exit 1
+fi
+
+if [[ ! -e "${KEYFILE}" ]]; then
+	echo "Specified keyfile ${KEYFILE} does not exist."
+	exit 1
+fi
+
+if [[ -z "${DEVICE+x}" ]]; then
+	echo "Device must be specified to continue."
+	exit 1
+fi
+
+if [[ ! -b "${DEVICE}" ]]; then
+	echo "Specified device ${DEVICE} is not a block device."
+	exit 1
+fi
+
+if blkid "${DEVICE}" >/dev/null; then
+	echo "Device ${DEVICE} already contains a filesystem or LUKS header."
+        echo "Please run \"wipefs -a '${DEVICE}'\" first to proceed."
+	exit 1
+fi
+
+SEED=$(udevadm info --query=property --property=ID_SERIAL --value "${DEVICE}" | sha256sum | tr -d ' -')
+KEY=$(argon2 "${SEED}" -id -r -t 16 -m 16 -p 16 <"${KEYFILE}")
+
+export KEY
+
+/sbin/cryptsetup -q --type luks2 luksFormat "${DEVICE}" <(printenv KEY | xxd -p -r)
+ID_FS_UUID=$(udevadm info --query=property --property=ID_FS_UUID --value "${DEVICE}")
+CRYPT_DEVICE="/dev/mapper/crypt-${ID_FS_UUID}"
+
+if ! /sbin/cryptsetup luksOpen --key-file <(printenv KEY | xxd -p -r) "${DEVICE}" "$(basename "${CRYPT_DEVICE}")"; then
+	echo "Could not open LUKS device ${DEVICE}"
+	echo "Please verify keyfile at ${KEYFILE}"
+	exit 1
+fi
+
+unset KEY
+
+/sbin/mkfs.xfs -f "${CRYPT_DEVICE}" \
+	&& /sbin/cryptsetup luksClose "$(basename "${CRYPT_DEVICE}")"
+
+echo "Device '${DEVICE}' was successfully formatted."
+exit 0

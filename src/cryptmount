@@ -1,0 +1,65 @@
+#!/bin/bash
+
+set -euo pipefail
+
+while [[ $# -gt 0 ]]; do
+	opt="$1"
+	shift
+	case "${opt}" in
+		"--")
+			break
+			;;
+		"-h")
+			echo "Usage: cryptmount -k keyfile device"
+			exit 1
+			;;
+		"-k")
+			KEYFILE="$1"
+			shift
+			;;
+		*)
+			DEVICE="${opt}"
+			;;
+	esac
+done
+
+if [[ -z "${KEYFILE+x}" ]]; then
+	echo "Keyfile must be specified to continue."
+	exit 1
+fi
+
+if [[ ! -e "${KEYFILE}" ]]; then
+	echo "Specified keyfile ${KEYFILE} does not exist."
+	exit 1
+fi
+
+if [[ -z "${DEVICE+x}" ]]; then
+	echo "Device must be specified to continue."
+	exit 1
+fi
+
+if [[ ! -b "${DEVICE}" ]]; then
+	echo "Specified device ${DEVICE} is not a block device."
+	exit 1
+fi
+
+ID_FS_UUID=$(udevadm info --query=property --property=ID_FS_UUID --value "${DEVICE}")
+CRYPT_DEVICE="/dev/mapper/crypt-${ID_FS_UUID}"
+
+SEED=$(udevadm info --query=property --property=ID_SERIAL --value "${DEVICE}" | sha256sum | tr -d ' -')
+KEY=$(argon2 "${SEED}" -id -r -t 16 -m 16 -p 16 <"${KEYFILE}")
+
+export KEY
+
+/sbin/cryptsetup luksOpen --key-file <(printenv KEY | xxd -p -r) "${DEVICE}" "$(basename "${CRYPT_DEVICE}")"
+
+unset KEY
+
+DEVPATH=$(udevadm info --query=property --property=DEVPATH --value "${DEVICE}")
+MOUNTDIR=/mnt/$(uuidgen --md5 --namespace @url --name "${DEVPATH}")
+
+mkdir -p "${MOUNTDIR}" && mount "${CRYPT_DEVICE}" "${MOUNTDIR}" &>/dev/null \
+	&& /bin/systemctl daemon-reload
+
+echo "Device ${DEVICE} was successfully mounted on ${MOUNTDIR}"
+exit 0

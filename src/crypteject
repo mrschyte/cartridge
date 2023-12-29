@@ -1,0 +1,48 @@
+#!/bin/bash
+
+set -euo pipefail
+
+while [[ $# -gt 0 ]]; do
+	opt="$1"
+	shift
+	case "${opt}" in
+		"--")
+			break
+			;;
+		"-h")
+			echo "Usage: crypteject device"
+			exit 1
+			;;
+		*)
+			DEVICE="${opt}"
+			;;
+	esac
+done
+
+if [[ -z "${DEVICE+x}" ]]; then
+	echo "Device must be specified to continue."
+	exit 1
+fi
+
+if [[ ! -b "${DEVICE}" ]]; then
+	echo "Specified device ${DEVICE} is not a block device."
+	exit 1
+fi
+
+ID_FS_UUID=$(udevadm info --query=property --property=ID_FS_UUID --value "${DEVICE}")
+CRYPT_DEVICE="/dev/mapper/crypt-${ID_FS_UUID}"
+
+DEVPATH=$(udevadm info --query=property --property=DEVPATH --value "${DEVICE}")
+MOUNTDIR=/mnt/$(uuidgen --md5 --namespace @url --name "${DEVPATH}")
+
+umount "${CRYPT_DEVICE}" &>/dev/null && /sbin/cryptsetup luksClose "$(basename "${CRYPT_DEVICE}")" \
+	&& (touch "/mnt/.crypteject" && rmdir -p "${MOUNTDIR}" &>/dev/null || true && rm "/mnt/.crypteject") \
+	&& sync && hdparm -Y "${DEVICE}" &>/dev/null || true && /bin/systemctl daemon-reload
+
+RET=$?
+if [[ "${RET}" -eq 0 ]]; then
+	echo "Device ${DEVICE} can now be safely removed."
+else
+	echo "Could not fully eject device ${DEVICE}"
+fi
+exit ${RET}
