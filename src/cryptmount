@@ -55,7 +55,10 @@ export KEY
 
 unset KEY
 
-DEVPATH=$(udevadm info --query=property --property=DEVPATH --value "${DEVICE}")
+DEVPATH=$(udevadm info --query=property --property=ID_PATH --value "${DEVICE}")
+if [[ -z "${DEVPATH}" ]]; then
+	DEVPATH=$(udevadm info --query=property --property=DEVPATH --value "${DEVICE}")
+fi
 MOUNTDIR=/mnt/$(uuidgen --md5 --namespace @url --name "${DEVPATH}")
 
 mkdir -p "${MOUNTDIR}" && mount "${CRYPT_DEVICE}" "${MOUNTDIR}" &>/dev/null \
