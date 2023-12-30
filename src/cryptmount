@@ -64,5 +64,10 @@ MOUNTDIR=/mnt/$(uuidgen --md5 --namespace @url --name "${DEVPATH}")
 mkdir -p "${MOUNTDIR}" && mount "${CRYPT_DEVICE}" "${MOUNTDIR}" &>/dev/null \
 	&& /bin/systemctl daemon-reload
 
-echo "Device ${DEVICE} was successfully mounted on ${MOUNTDIR}"
-exit 0
+RET=$?
+if [[ "${RET}" -eq 0 ]]; then
+	echo "Device ${DEVICE} was successfully mounted on ${MOUNTDIR}"
+else
+	echo "Could not mount device ${DEVICE} on ${MOUNTDIR}"
+fi
+exit ${RET}

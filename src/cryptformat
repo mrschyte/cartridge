@@ -69,5 +69,10 @@ unset KEY
 /sbin/mkfs.xfs -f "${CRYPT_DEVICE}" \
 	&& /sbin/cryptsetup luksClose "$(basename "${CRYPT_DEVICE}")"
 
-echo "Device '${DEVICE}' was successfully formatted."
-exit 0
+RET=$?
+if [[ "${RET}" -eq 0 ]]; then
+	echo "Device '${DEVICE}' was successfully formatted."
+else
+	echo "Could not format device ${DEVICE}"
+fi
+exit ${RET}
