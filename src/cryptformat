@@ -55,7 +55,7 @@ KEY=$(argon2 "${SEED}" -id -r -t 16 -m 16 -p 16 <"${KEYFILE}")
 export KEY
 
 /sbin/cryptsetup -q --type luks2 luksFormat "${DEVICE}" <(printenv KEY | xxd -p -r)
-ID_FS_UUID=$(udevadm info --query=property --property=ID_FS_UUID --value "${DEVICE}")
+ID_FS_UUID=$(blkid -s UUID -o value "${DEVICE}")
 CRYPT_DEVICE="/dev/mapper/crypt-${ID_FS_UUID}"
 
 if ! /sbin/cryptsetup luksOpen --key-file <(printenv KEY | xxd -p -r) "${DEVICE}" "$(basename "${CRYPT_DEVICE}")"; then
