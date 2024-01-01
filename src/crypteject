@@ -38,14 +38,29 @@ if [[ -z "${DEVPATH}" ]]; then
 fi
 MOUNTDIR=/mnt/$(uuidgen --md5 --namespace @url --name "${DEVPATH}")
 
-umount "${CRYPT_DEVICE}" &>/dev/null && /sbin/cryptsetup luksClose "$(basename "${CRYPT_DEVICE}")" \
-	&& (touch "/mnt/.crypteject" && rmdir -p "${MOUNTDIR}" &>/dev/null || true && rm "/mnt/.crypteject") \
-	&& sync && hdparm -Y "${DEVICE}" &>/dev/null || true && /bin/systemctl daemon-reload
-
-RET=$?
-if [[ "${RET}" -eq 0 ]]; then
-	echo "Device ${DEVICE} can now be safely removed."
-else
-	echo "Could not fully eject device ${DEVICE}"
+if [[ ! -e "${CRYPT_DEVICE}" ]]; then
+	echo "Cannot unmount LUKS device ${CRYPT_DEVICE}; path does not exist."
+	exit 1
 fi
-exit ${RET}
+
+if ! umount "${CRYPT_DEVICE}" &>/dev/null; then
+	echo "Could not unmount filesystem from ${CRYPT_DEVICE}"
+	exit 1
+fi
+
+if ! /sbin/cryptsetup luksClose "$(basename "${CRYPT_DEVICE}")" &>/dev/null; then
+	echo "Could not close LUKS device ${CRYPT_DEVICE}"
+	exit 1
+fi
+
+if ! { touch "/mnt/.crypteject" && rmdir -p "${MOUNTDIR}" &>/dev/null || true && rm "/mnt/.crypteject"; }; then
+	echo "Could not remove mount directory ${MOUNTDIR}"
+	exit 1
+fi
+
+if ! { sync && hdparm -Y "${DEVICE}" &>/dev/null; }; then
+	echo "WARNING: device ${DEVICE} could not be synced or powered down."
+else
+	echo "Device ${DEVICE} can now be safely removed."
+fi
+exit 0

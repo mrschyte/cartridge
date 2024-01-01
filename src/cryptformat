@@ -54,7 +54,11 @@ KEY=$(argon2 "${SEED}" -id -r -t 16 -m 16 -p 16 <"${KEYFILE}")
 
 export KEY
 
-/sbin/cryptsetup -q --type luks2 luksFormat "${DEVICE}" <(printenv KEY | xxd -p -r)
+if ! /sbin/cryptsetup -q --type luks2 luksFormat "${DEVICE}" <(printenv KEY | xxd -p -r); then
+	echo "Could not LUKS format device ${DEVICE}"
+	exit 1
+fi
+
 ID_FS_UUID=$(blkid -s UUID -o value "${DEVICE}")
 CRYPT_DEVICE="/dev/mapper/crypt-${ID_FS_UUID}"
 
@@ -66,13 +70,15 @@ fi
 
 unset KEY
 
-/sbin/mkfs.xfs -f "${CRYPT_DEVICE}" \
-	&& /sbin/cryptsetup luksClose "$(basename "${CRYPT_DEVICE}")"
-
-RET=$?
-if [[ "${RET}" -eq 0 ]]; then
-	echo "Device '${DEVICE}' was successfully formatted."
-else
-	echo "Could not format device ${DEVICE}"
+if ! /sbin/mkfs.xfs -f "${CRYPT_DEVICE}"; then
+	echo "Could not create filesystem on device ${DEVICE}"
+	exit 1
 fi
-exit ${RET}
+
+if ! /sbin/cryptsetup luksClose "$(basename "${CRYPT_DEVICE}")"; then
+	echo "Could not close LUKS device ${CRYPT_DEVICE}"
+	exit 1
+fi
+
+echo "Device '${DEVICE}' was successfully formatted."
+exit 0

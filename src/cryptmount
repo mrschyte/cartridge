@@ -51,7 +51,14 @@ KEY=$(argon2 "${SEED}" -id -r -t 16 -m 16 -p 16 <"${KEYFILE}")
 
 export KEY
 
-/sbin/cryptsetup luksOpen --key-file <(printenv KEY | xxd -p -r) "${DEVICE}" "$(basename "${CRYPT_DEVICE}")"
+if ! /sbin/cryptsetup luksOpen --key-file <(printenv KEY | xxd -p -r) "${DEVICE}" "$(basename "${CRYPT_DEVICE}")" &>/dev/null; then
+	if [[ -e "${CRYPT_DEVICE}" ]]; then
+		echo "Cannot create LUKS device ${CRYPT_DEVICE}; path already exists."
+	else
+		echo "Could not open LUKS device ${DEVICE} using keyfile ${KEYFILE}"
+	fi
+	exit 1
+fi
 
 unset KEY
 
@@ -61,13 +68,10 @@ if [[ -z "${DEVPATH}" ]]; then
 fi
 MOUNTDIR=/mnt/$(uuidgen --md5 --namespace @url --name "${DEVPATH}")
 
-mkdir -p "${MOUNTDIR}" && mount "${CRYPT_DEVICE}" "${MOUNTDIR}" &>/dev/null \
-	&& /bin/systemctl daemon-reload
-
-RET=$?
-if [[ "${RET}" -eq 0 ]]; then
-	echo "Device ${DEVICE} was successfully mounted on ${MOUNTDIR}"
-else
+if ! { mkdir -p "${MOUNTDIR}" && mount "${CRYPT_DEVICE}" "${MOUNTDIR}" &>/dev/null; }; then
 	echo "Could not mount device ${DEVICE} on ${MOUNTDIR}"
+	exit 1
 fi
-exit ${RET}
+
+echo "Device ${DEVICE} was successfully mounted on ${MOUNTDIR}"
+exit 0
