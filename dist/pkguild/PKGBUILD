@@ -1,0 +1,21 @@
+# Maintainer: Peter Kasza <peter.kasza@itinsight.hu>
+pkgname=cartridge
+pkgver=1.0
+pkgrel=1
+pkgdesc="Shell utilities for managing LUKS encrypted volumes"
+arch=('any')
+url="https://github.com/mrschyte/cartridge"
+license=('GPL')
+depends=('bash')
+source=("git+https://github.com/mrschyte/cartridge.git#tag=v${pkgver}")
+md5sums=('SKIP')
+
+package() {
+  cd "$srcdir/$pkgname"
+
+  for src in src/*; do
+	install -o root -g root -m755 -D "${src}" "${pkgdir}/usr/bin/$(basename "${src}")"
+  done
+}
+
+# vim:set ts=2 sw=2 et:
